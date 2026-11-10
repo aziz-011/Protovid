@@ -43,8 +43,17 @@ Useful options:
 | `--script-only` | Only write the storyboard JSON so you can review/edit it |
 | `protovid my_protocol.storyboard.json` | Render a video from an (edited) storyboard |
 | `--voice gtts \| espeak \| none` | Voice engine: Google TTS (default, needs internet), offline espeak-ng, or silent |
+| `--no-doc-images` | Don't use the pictures embedded in the Word file |
 | `--no-ai` | Build the script from the document's headings and lists, without Claude |
 | `--keep-frames DIR` | Keep the slide PNGs, audio and clips |
+
+### Pictures already in the Word file
+
+Pictures embedded in the protocol (figures, photos in the tools table) are
+extracted automatically to `<protocol>_images/` and placed on the slide of the
+step they belong to, using their position and caption. Use `--no-doc-images`
+to ignore them. Tracked changes are read as if accepted, and the front
+matter (approval/revision tables, table of contents) is skipped.
 
 ### Adding your own photos
 

@@ -6,3 +6,4 @@ examples/*.docx
 frames/
 .venv/
 examples/images/
+*_images/

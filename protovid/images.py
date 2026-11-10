@@ -19,7 +19,8 @@ PREVIEW_PX = 768             # downscale before sending: cheaper, plenty to reco
 class ImageAsset:
     name: str          # file name, used as the ID in the storyboard
     path: Path
-    label: str         # human-readable, from the file name ("filter_housing.jpg" -> "filter housing")
+    label: str         # human-readable: caption, or from the file name ("filter_housing.jpg" -> "filter housing")
+    source: str = "folder"   # "document" (embedded in the .docx) or "folder" (user-supplied)
 
     def preview_b64(self) -> str:
         with Image.open(self.path) as im:
@@ -53,11 +54,35 @@ def load_images(folder: str | Path | None) -> list[ImageAsset]:
     return assets
 
 
+def from_figures(figures) -> list[ImageAsset]:
+    """Pictures embedded in the Word document (see docx_reader.Figure)."""
+    return [ImageAsset(name=f.name, path=f.path, label=f.caption or _label(Path(f.name).stem), source="document")
+            for f in figures]
+
+
+def merge(*groups: list[ImageAsset]) -> list[ImageAsset]:
+    """Combine image lists, renaming clashes so every name is unique."""
+    out: list[ImageAsset] = []
+    names: set[str] = set()
+    for group in groups:
+        for a in group:
+            name, k = a.name, 2
+            while name in names:
+                name = f"{Path(a.name).stem}_{k}{Path(a.name).suffix}"
+                k += 1
+            names.add(name)
+            out.append(ImageAsset(name=name, path=a.path, label=a.label, source=a.source))
+    return out
+
+
 def claude_image_blocks(assets: list[ImageAsset]) -> list[dict]:
     """Content blocks that show Claude each image, labelled by its file name."""
     blocks: list[dict] = []
     for a in assets[:MAX_IMAGES_FOR_CLAUDE]:
-        blocks.append({"type": "text", "text": f"Image file: {a.name}"})
+        desc = f"Image file: {a.name}"
+        if a.source == "document":
+            desc += f" (embedded in the protocol; caption/context: {a.label or 'none'})"
+        blocks.append({"type": "text", "text": desc})
         blocks.append({
             "type": "image",
             "source": {"type": "base64", "media_type": "image/jpeg", "data": a.preview_b64()},
@@ -82,6 +107,8 @@ def match_by_name(text: str, assets: list[ImageAsset]) -> str | None:
             continue
         hits = sum(1 for w in label if w in words or w.rstrip("s") in words)
         score = hits / len(label)
-        if hits and score > best_score:
+        # short labels ("tube cutter") must match fully; longer ones mostly
+        needed = 1.0 if len(label) <= 2 else 0.6
+        if score >= needed and score > best_score:
             best, best_score = a.name, score
-    return best if best_score >= 0.5 else None
+    return best

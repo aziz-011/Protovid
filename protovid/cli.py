@@ -17,6 +17,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--output", type=Path, help="Output .mp4 (default: next to the input)")
     p.add_argument("-i", "--images", type=Path,
                    help="Folder of photos (machines, components, tools...) to show on the slides")
+    p.add_argument("--no-doc-images", action="store_true",
+                   help="Ignore pictures embedded in the Word document")
     p.add_argument("--no-ai", action="store_true", help="Build the script offline from headings/lists (no Claude)")
     p.add_argument("--voice", choices=["gtts", "espeak", "none"], default="gtts", help="Narration engine")
     p.add_argument("--lang", default="en", help="Narration language code for TTS, e.g. en, fr, es")
@@ -36,14 +38,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.input.suffix.lower() == ".json":
             board = Storyboard.from_json(args.input.read_text(encoding="utf-8"))
-            if images:  # let the user point an edited storyboard at a (new) image folder
-                board.images_dir = str(images[0].path.parent)
+            for a in images:  # make a (new) image folder available to an edited storyboard
+                board.images.setdefault(a.name, str(a.path))
         else:
             print(f"Reading {args.input.name} and writing the script"
                   f"{' with Claude' if not args.no_ai else ''}...")
             board = build_storyboard(args.input, use_ai=not args.no_ai,
                                      language=args.language, audience=args.audience,
-                                     images=images)
+                                     images=images,
+                                     figures_dir=None if args.no_doc_images
+                                     else args.input.with_name(args.input.stem + "_images"))
     except StoryboardError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
