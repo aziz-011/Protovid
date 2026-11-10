@@ -13,6 +13,7 @@ dependencies = [
   "pillow>=10",
   "gTTS>=2.5",
   "numpy>=1.26",
+  "playwright>=1.45",   # motion style: run `playwright install chromium` once
 ]
 
 [project.optional-dependencies]
@@ -26,4 +27,7 @@ dependencies = [
 protovid = "protovid.cli:main"
 
 [tool.setuptools]
-packages = ["protovid"]
+packages = ["protovid", "protovid.motion"]
+
+[tool.setuptools.package-data]
+"protovid.motion" = ["template.html"]

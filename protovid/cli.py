@@ -22,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="3D CAD model (STEP, GLB, OBJ, STL). Repeat for several models")
     p.add_argument("--model-up", choices=["y", "z"],
                    help="Which axis is 'up' in the 3D model (default: y for STEP/GLB/OBJ, z for STL)")
+    p.add_argument("--style", choices=["motion", "classic"], default="motion",
+                   help="motion: animated diagrams with few words (default); classic: text slides")
     p.add_argument("--no-doc-images", action="store_true",
                    help="Ignore pictures embedded in the Word document")
     p.add_argument("--no-ai", action="store_true", help="Build the script offline from headings/lists (no Claude)")
@@ -62,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             board = build_storyboard(args.input, use_ai=not args.no_ai,
                                      language=args.language, audience=args.audience,
                                      context=args.context,
-                                     images=images, models=library,
+                                     images=images, models=library, style=args.style,
                                      figures_dir=None if args.no_doc_images
                                      else args.input.with_name(args.input.stem + "_images"))
     except StoryboardError as exc:
@@ -79,7 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     out = args.output or args.input.with_suffix(".mp4")
     if out.name.endswith(".storyboard.mp4"):
         out = out.with_name(out.name.replace(".storyboard.mp4", ".mp4"))
-    render_video(board, out, voice=args.voice, lang=args.lang, work_dir=args.keep_frames)
+    render_video(board, out, voice=args.voice, lang=args.lang, work_dir=args.keep_frames,
+                 style=args.style)
     print(f"Video: {out}")
     return 0
 

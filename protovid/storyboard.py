@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, asdict
 from .docx_reader import ProtocolDoc
 from .images import MAX_IMAGES_FOR_CLAUDE, ImageAsset, claude_image_blocks, match_by_name
 from .render3d import VIEWS, ModelLibrary, match_part
+from .motion import ICON_NAMES, LAYOUTS
 
 MODEL = "claude-opus-5-5"
 
@@ -31,6 +32,13 @@ class Scene:
     model_part: str | None = None   # 'model' or 'model/part' from Storyboard.models
     view3d: str | None = None       # orbit | closeup | exploded
     image: str | None = None  # a key of Storyboard.images
+    # --- motion style ---
+    layout: str | None = None                       # see motion.LAYOUTS
+    items: list[dict] = field(default_factory=list)  # [{"label", "detail", "icon", "image"}]
+    machine_parts: list[str] = field(default_factory=list)
+    highlight: str | None = None
+    power: str | None = None                        # "off" | "on" | None
+    svg: str | None = None                          # custom animated diagram
 
 
 @dataclass
@@ -39,6 +47,8 @@ class Storyboard:
     scenes: list[Scene]
     images: dict[str, str] = field(default_factory=dict)  # image name -> file path
     models: dict[str, dict] = field(default_factory=dict)  # model name -> {"path": ..., "up": "y"|"z"}
+    machine_name: str | None = None
+    labels: dict[str, str] = field(default_factory=dict)  # UI words in the video's language
 
     def image_path(self, name: str | None) -> Path | None:
         if not name or name not in self.images:
@@ -48,7 +58,8 @@ class Storyboard:
 
     def to_json(self) -> str:
         return json.dumps(
-            {"title": self.title, "images": self.images, "models": self.models,
+            {"title": self.title, "machine_name": self.machine_name, "labels": self.labels,
+             "images": self.images, "models": self.models,
              "scenes": [asdict(s) for s in self.scenes]},
             indent=2,
             ensure_ascii=False,
@@ -67,6 +78,12 @@ class Storyboard:
                 image=s.get("image") or None,
                 model_part=s.get("model_part") or None,
                 view3d=s.get("view3d") if s.get("view3d") in VIEWS else None,
+                layout=s.get("layout") if s.get("layout") in LAYOUTS else None,
+                items=[dict(it) for it in s.get("items") or [] if isinstance(it, dict) and it.get("label")],
+                machine_parts=[str(x) for x in s.get("machine_parts") or []],
+                highlight=s.get("highlight") or None,
+                power=s.get("power") if s.get("power") in ("on", "off") else None,
+                svg=s.get("svg") or None,
             )
             for s in data["scenes"]
         ]
@@ -75,7 +92,8 @@ class Storyboard:
             for sc in scenes:
                 if sc.image and sc.image not in images:
                     images[sc.image] = str(Path(data["images_dir"]) / sc.image)
-        return cls(title=data["title"], scenes=scenes, images=images, models=dict(data.get("models") or {}))
+        return cls(title=data["title"], scenes=scenes, images=images, models=dict(data.get("models") or {}),
+                   machine_name=data.get("machine_name") or None, labels=dict(data.get("labels") or {}))
 
 
 # --------------------------------------------------------------------------- #
@@ -100,11 +118,7 @@ step_number. Merge trivial sub-steps; split steps that do several things.
 "warning" scene right before the step it applies to, so the viewer hears it \
 in time.
 - End with a "summary" scene recapping the key points.
-- Bullets are what the viewer reads: at most 4 per slide, each under 12 words, \
-imperative voice, with exact quantities, settings and times from the source.
-- Narration is spoken: one to three plain, natural sentences per scene \
-(roughly 15-60 words). No markdown, no bullet symbols, spell out units the \
-way a person would say them.
+{WORDING}
 - Stay faithful to the source. Never invent quantities, values, timings or \
 safety claims that are not in the protocol. If something is ambiguous, keep \
 the source wording.
@@ -137,7 +151,73 @@ corresponds to what the step talks about.
 """
 
 
-def storyboard_schema(image_names: list[str], part_ids: list[str] | None = None) -> dict:
+CLASSIC_WORDING = """\
+- Bullets are what the viewer reads: at most 4 per slide, each under 12 words, \
+imperative voice, with exact quantities, settings and times from the source.
+- Narration is spoken: one to three plain, natural sentences per scene \
+(roughly 15-60 words). No markdown, no bullet symbols, spell out units the \
+way a person would say them."""
+
+MOTION_WORDING = """\
+- Few words, more pictures. The viewer should understand each scene from the \
+animation; text only labels it.
+- heading: at most 5 words. bullets: at most 3, each at most 6 words, with the \
+exact quantities, settings and times from the source.
+- narration: ONE short spoken sentence (at most 16 words). It is also shown \
+as the subtitle. No markdown; spell out units the way a person says them.
+- Prefer more, shorter scenes: one action per step scene."""
+
+MOTION_PROMPT = """
+The video is animated motion graphics, not slides. For every scene choose a \
+"layout" and fill only the fields it uses (empty list / null for the others):
+- "title": heading + an optional subtitle in bullets[0].
+- "items": equipment / materials as cards that pop in. Fill "items" with \
+{label (2-4 words), detail (quantity or use, max 6 words), icon, image}. \
+icon is one of the built-in line icons; image is a photo file name when one \
+shows that item (it replaces the icon).
+- "warnings": safety rules as red bars stacking one by one; one rule per bullet.
+- "checklist": short actions that tick off in turn (bullets).
+- "machine": a schematic of the machine as stacked parts from top to bottom \
+("machine_parts", e.g. ["Screen", "Electrical hatch", "Spout", "Door"]) with \
+one part circled ("highlight", exactly one of machine_parts). Use it to show \
+WHERE the action happens. Keep the same machine_parts list in every machine \
+scene of a video. Only list parts the protocol names.
+- "diagram": your own animated SVG in "svg" showing the action itself (water \
+filling a bottle, alcohol sprayed on a tap, a cable moved to another terminal, \
+a timer, a label being written, bottles going into a cool box...). Use this \
+for most step scenes.
+- "media": a photo ("image") or the 3D view ("model_part") with bullets as notes.
+"power": "off" or "on" shows a power-state badge (use it whenever the protocol \
+says the machine must be off or on for that step), else null.
+
+Writing "svg" for the diagram layout:
+- One <svg viewBox="0 0 1200 700"> element; flat line art: stroke #1b2a44 \
+(width 3-4), fills #ffffff, #d5dbe5 (machine grey), #dbeafe (pale blue), \
+water #38bdf8 / #22b8d8, accent #1d4fd8, danger #c8102e. Labels: <text> \
+font-size 28-34, fill #1b2a44, font-weight 600. No external images, no \
+scripts, no <foreignObject>.
+- Animate ONLY with these CSS classes, timed with style="--d:<delay>s" (and \
+"--dur:<duration>s" where noted). Keep everything finished by about 6 s:
+  appear / fade / pop / slide-l / slide-r / drop-in   (enter once)
+  draw   - a path/line drawing itself; give the element pathLength="1" (--dur)
+  flow   - liquid or current moving along a path (pathLength="1"), loops
+  fill-up - a rect filling from the bottom, e.g. water level in a bottle (--dur)
+  drain  - the opposite: a level going down, e.g. emptying a bottle (--dur)
+  drip   - a drop falling and fading, loops (--fall:<px>)
+  mist   - a spray puff, loops
+  pulse, blink, spin (--dur), shake (4 wiggles), progress (bar growing, --dur)
+  move   - translate by --dx/--dy (px) over --dur, e.g. a bottle moving into a box
+- Built-in icons can be placed with <use href="#i-NAME" x=".." y=".." \
+width=".." height=".."/> (NAME from the icon list).
+- Draw the action large and centred, label the key parts, and stay true to \
+the protocol (do not invent parts, values or extra steps).
+Also set top-level "labels" (UI words in the video language: intro, safety, \
+method, step, power_off, power_on) and "machine_name" (or null).
+"""
+
+
+def storyboard_schema(image_names: list[str], part_ids: list[str] | None = None,
+                      motion: bool = False) -> dict:
     part_ids = part_ids or []
     part_field = (
         {"anyOf": [{"type": "string", "enum": part_ids}, {"type": "null"}]}
@@ -151,7 +231,7 @@ def storyboard_schema(image_names: list[str], part_ids: list[str] | None = None)
         {"anyOf": [{"type": "string", "enum": image_names}, {"type": "null"}]}
         if image_names else {"type": "null"}
     )
-    return {
+    schema = {
         "type": "object",
         "properties": {
             "title": {"type": "string"},
@@ -178,6 +258,43 @@ def storyboard_schema(image_names: list[str], part_ids: list[str] | None = None)
         "required": ["title", "scenes"],
         "additionalProperties": False,
     }
+    if motion:
+        scene = schema["properties"]["scenes"]["items"]
+        nullable = lambda t: {"anyOf": [t, {"type": "null"}]}
+        scene["properties"].update({
+            "layout": {"type": "string", "enum": LAYOUTS},
+            "items": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "icon": nullable({"type": "string", "enum": ICON_NAMES}),
+                    "image": image_field,
+                },
+                "required": ["label", "detail", "icon", "image"],
+                "additionalProperties": False,
+            }},
+            "machine_parts": {"type": "array", "items": {"type": "string"}},
+            "highlight": nullable({"type": "string"}),
+            "power": nullable({"type": "string", "enum": ["off", "on"]}),
+            "svg": nullable({"type": "string"}),
+        })
+        scene["required"] += ["layout", "items", "machine_parts", "highlight", "power", "svg"]
+        labels = {k: {"type": "string"} for k in ("intro", "safety", "method", "step", "power_off", "power_on")}
+        schema["properties"]["labels"] = {"type": "object", "properties": labels,
+                                          "required": list(labels), "additionalProperties": False}
+        schema["properties"]["machine_name"] = nullable({"type": "string"})
+        schema["required"] += ["labels", "machine_name"]
+    return schema
+
+
+def system_prompt(style: str, has_images: bool, has_models: bool) -> str:
+    motion = style == "motion"
+    text = SYSTEM_PROMPT.replace("{WORDING}", MOTION_WORDING if motion else CLASSIC_WORDING)
+    if motion:
+        text = re.sub(r"The video is a sequence of slides\..*?aloud\.\n", "", text, flags=re.S)
+        text += MOTION_PROMPT + "Icons: " + ", ".join(ICON_NAMES) + "\n"
+    return text + (IMAGES_PROMPT if has_images else "") + (MODELS_PROMPT if has_models else "")
 
 
 class StoryboardError(RuntimeError):
@@ -193,6 +310,7 @@ def claude_storyboard(
     model: str = MODEL,
     images: list[ImageAsset] | None = None,
     models: ModelLibrary | None = None,
+    style: str = "motion",
 ) -> Storyboard:
     import anthropic
 
@@ -222,12 +340,12 @@ def claude_storyboard(
     with client.beta.messages.stream(
         model=model,
         max_tokens=64000,
-        system=SYSTEM_PROMPT + (IMAGES_PROMPT if usable else "") + (MODELS_PROMPT if part_ids else ""),
+        system=system_prompt(style, bool(usable), bool(part_ids)),
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
         output_config={
             "effort": "medium",
-            "format": {"type": "json_schema", "schema": storyboard_schema(usable, part_ids)},
+            "format": {"type": "json_schema", "schema": storyboard_schema(usable, part_ids, motion=style == "motion")},
         },
         messages=[{"role": "user", "content": content}],
     ) as stream:
@@ -254,6 +372,12 @@ def claude_storyboard(
             scene.view3d = "closeup" if "/" in scene.model_part else "orbit"
         if not scene.model_part:
             scene.view3d = None
+    for scene in board.scenes:
+        for it in scene.items:
+            if it.get("image") not in usable:
+                it["image"] = None
+        if scene.highlight and scene.highlight not in scene.machine_parts:
+            scene.highlight = None
     board.images = {a.name: str(a.path) for a in images}
     if models:
         board.models = {m.name: {"path": str(m.path), "up": m.up} for m in models.models.values()}

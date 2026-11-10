@@ -16,6 +16,7 @@ You need Python 3.10+ and [ffmpeg](https://ffmpeg.org/download.html) on your PAT
 
 ```bash
 pip install -e .
+playwright install chromium
 ```
 
 Set your Anthropic API key (from https://platform.claude.com):
@@ -23,6 +24,18 @@ Set your Anthropic API key (from https://platform.claude.com):
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+## Two styles
+
+- **`--style motion` (default):** animated motion graphics with very few words,
+  like an explainer video: a title bar with a step tag (`Step 3/12`), one short
+  subtitle per scene, equipment cards that pop in, red warning bars that stack,
+  a labelled machine schematic with the part circled and a *power off / on*
+  badge, checklists that tick, and animated diagrams of each action (water
+  filling a bottle, alcohol being sprayed, a timer, bottles going into a cool
+  box...). Claude writes the diagram for each step as animated SVG using a
+  fixed set of animations; scenes are recorded frame by frame in headless Chromium.
+- **`--style classic`:** the earlier text slides with bullets and photos.
 
 ## Use
 
