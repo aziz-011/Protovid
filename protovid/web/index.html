@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protovid</title>
+<style>
+  :root {
+    --navy: #13233f; --ink: #1b2a44; --blue: #1d4fd8; --blue-2: #e8efff; --sky: #38bdf8;
+    --red: #c8102e; --green: #16a34a; --amber: #b45309; --line: #d9dee8; --muted: #5b6b85;
+    --bg: #f5f7fb; --card: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 "Inter", "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  a { color: var(--blue); }
+  header.top { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: var(--navy); color: #fff; }
+  header.top b { font-size: 20px; letter-spacing: .3px; cursor: pointer; }
+  header.top .pills { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 20px; background: rgba(255,255,255,.12); }
+  .pill.ok::before { content: "● "; color: #4ade80; } .pill.no::before { content: "● "; color: #f87171; }
+  main { max-width: 1400px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; color: var(--navy); }
+  h2 { font-size: 18px; margin: 0 0 12px; color: var(--navy); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .4px; }
+  input[type=text], input[type=number], select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: #fff; color: var(--ink); }
+  textarea { min-height: 70px; resize: vertical; }
+  textarea.code { font: 12px/1.4 Consolas, "DejaVu Sans Mono", monospace; min-height: 160px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-top: 10px; }
+  button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.danger { color: var(--red); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  .drop { border: 2px dashed #b7c3d9; border-radius: 10px; padding: 18px; text-align: center; background: #fafcff; }
+  .drop.hot { border-color: var(--blue); background: var(--blue-2); }
+  .drop input { display: block; margin: 8px auto 0; }
+  .projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .proj { cursor: pointer; }
+  .proj:hover { border-color: var(--blue); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--blue-2); color: var(--blue); margin-right: 4px; }
+  .tag.warn { background: #fee2e2; color: var(--red); }
+  .editor { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+  .scenes { max-height: 78vh; overflow: auto; padding: 8px; }
+  .scene { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .scene:hover { background: #f1f5fb; }
+  .scene.sel { background: var(--blue-2); border-color: #bcd0ff; }
+  .scene .n { font-weight: 800; color: var(--blue); width: 22px; flex: none; }
+  .scene .t { font-weight: 600; } .scene .s { font-size: 12px; color: var(--muted); }
+  .preview-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #e9edf4; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .preview-wrap iframe { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
+  .items-table td { padding: 2px 3px; } .items-table input, .items-table select { padding: 5px 6px; font-size: 13px; }
+  .progress { height: 10px; background: #e6ebf3; border-radius: 6px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--blue); width: 0; transition: width .4s; }
+  .log { font: 12px/1.4 Consolas, monospace; background: #0f1b31; color: #cfe0ff; padding: 10px; border-radius: 6px; max-height: 160px; overflow: auto; white-space: pre-wrap; margin-top: 8px; }
+  video { width: 100%; border-radius: 8px; background: #000; }
+  .err { color: var(--red); font-weight: 600; }
+  .hidden { display: none !important; }
+  @media (max-width: 900px) { .grid2, .editor { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top"><b onclick="go('#/')">Protovid</b><span class="muted" style="color:#b9c6dd">Word protocol → training video</span><div class="pills" id="pills"></div></header>
+<main id="app"></main>
+
+<template id="tpl-home">
+  <div class="grid2">
+    <div class="card">
+      <h2>New video</h2>
+      <form id="new-form">
+        <div class="drop" id="drop-docx"><b>Word protocol (.docx)</b><div class="muted">Drop it here or choose a file</div><input type="file" name="docx" accept=".docx" required></div>
+        <div class="grid2" style="margin-top:12px">
+          <div class="drop"><b>Photos</b> <span class="muted">(optional)</span><div class="muted">Machines, components, tools</div><input type="file" name="photos" accept="image/*" multiple></div>
+          <div class="drop"><b>3D CAD</b> <span class="muted">(optional)</span><div class="muted">STEP, GLB, OBJ, STL</div><input type="file" name="models" accept=".step,.stp,.glb,.gltf,.obj,.stl,.ply,.3mf" multiple></div>
+        </div>
+        <label>Name</label><input type="text" name="name" placeholder="e.g. Kaia – water sampling">
+        <div class="grid2">
+          <div><label>Style</label><select name="style"><option value="motion">Animated (few words)</option><option value="classic">Text slides</option></select></div>
+          <div><label>Voice</label><select name="voice"><option value="gtts">Google (online)</option><option value="festival">Festival (offline, English)</option><option value="espeak">eSpeak (offline)</option><option value="none">No voice</option></select></div>
+          <div><label>Script language</label><input type="text" name="language" placeholder="same as the document"></div>
+          <div><label>Voice language code</label><input type="text" name="lang" value="en" placeholder="en, fr, es..."></div>
+        </div>
+        <label>Audience</label><input type="text" name="audience" placeholder="e.g. Kumulus field technicians">
+        <label>Notes for Claude</label><textarea name="context" placeholder="e.g. The machine is the Kaia water fountain; samples are taken at its tap."></textarea>
+        <div class="check"><input type="checkbox" name="use_ai" checked id="use_ai"><label for="use_ai" style="margin:0;text-transform:none;font-size:14px;color:var(--ink)">Use Claude to write the script</label></div>
+        <div class="check"><input type="checkbox" name="doc_images" checked id="doc_images"><label for="doc_images" style="margin:0;text-transform:none;font-size:14px;color:var(--ink)">Use the pictures inside the Word file</label></div>
+        <div class="row" style="margin-top:16px"><button class="primary" type="submit">Create project</button><span id="new-msg" class="muted"></span></div>
+      </form>
+    </div>
+    <div>
+      <h2>Projects</h2>
+      <div class="projects" id="projects"><div class="muted">Loading…</div></div>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-project">
+  <div class="row" style="justify-content:space-between">
+    <div><h1 id="p-name"></h1><div class="muted" id="p-meta"></div></div>
+    <div class="row">
+      <button id="btn-script">Generate script</button>
+      <button id="btn-save" disabled>Save script</button>
+      <button class="primary" id="btn-render">Render video</button>
+      <button class="danger small" id="btn-delete">Delete project</button>
+    </div>
+  </div>
+  <div class="card hidden" id="job" style="margin-top:14px">
+    <div class="row" style="justify-content:space-between"><b id="job-title"></b><span class="muted" id="job-msg"></span></div>
+    <div class="progress" style="margin-top:8px"><div id="job-bar"></div></div>
+    <div class="log hidden" id="job-log"></div>
+  </div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card" id="renders-card"><h2>Videos</h2><div id="renders" class="muted">No video yet.</div></div>
+    <div class="card"><h2>Settings &amp; files</h2>
+      <div class="grid2">
+        <div><label>Style</label><select id="o-style"><option value="motion">Animated (few words)</option><option value="classic">Text slides</option></select></div>
+        <div><label>Voice</label><select id="o-voice"><option value="gtts">Google (online)</option><option value="festival">Festival (offline, English)</option><option value="espeak">eSpeak (offline)</option><option value="none">No voice</option></select></div>
+      </div>
+      <label>Notes for Claude</label><textarea id="o-context"></textarea>
+      <div class="row" style="margin-top:8px"><button class="small" id="btn-opts">Save settings</button><span class="muted" id="files"></span></div>
+      <div class="row" style="margin-top:10px">
+        <label style="margin:0">Add photos / CAD</label>
+        <input type="file" id="add-files" multiple accept="image/*,.step,.stp,.glb,.gltf,.obj,.stl,.ply,.3mf">
+      </div>
+    </div>
+  </div>
+  <div class="editor" id="editor">
+    <div class="card scenes"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:0">Scenes</h2><button class="small" id="btn-add">+ Add</button></div><div id="scene-list"></div></div>
+    <div class="card" id="scene-edit"><div class="muted">Generate the script, then pick a scene to edit it.</div></div>
+  </div>
+</template>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const go = h => { location.hash = h; };
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+const ICONS = ["bottle","sterile_bottle","spray","wipes","gloves","marker","coolbox","clipboard","thermometer","clock","tap","cup","syringe","tube","meter","key","phone","bucket","filter","hands","power","label","drop","box"];
+const LAYOUTS = ["title","items","warnings","checklist","machine","diagram","media"];
+const KINDS = ["title","overview","materials","step","warning","summary"];
+
+/* ------------------------------ status ------------------------------ */
+api('/api/status').then(s => {
+  $('#pills').innerHTML = [['Claude', s.claude], ['ffmpeg', s.ffmpeg], ['Offline voice', s.festival || s.espeak]]
+    .map(([n, ok]) => `<span class="pill ${ok ? 'ok' : 'no'}">${n}</span>`).join('');
+  window.STATUS = s;
+});
+
+/* ------------------------------ router ------------------------------ */
+window.addEventListener('hashchange', route);
+function route() {
+  const m = location.hash.match(/^#\/p\/([a-f0-9]{12})/);
+  if (m) showProject(m[1]); else showHome();
+}
+
+/* ------------------------------ home ------------------------------ */
+async function showHome() {
+  $('#app').innerHTML = $('#tpl-home').innerHTML;
+  const drop = $('#drop-docx');
+  ['dragover', 'dragenter'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('hot'); }));
+  ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, () => drop.classList.remove('hot')));
+  drop.addEventListener('drop', ev => { ev.preventDefault(); $('input[name=docx]', drop).files = ev.dataTransfer.files; });
+  $('#new-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const f = ev.target, fd = new FormData();
+    fd.append('docx', f.docx.files[0]);
+    [...f.photos.files].forEach(x => fd.append('photos', x));
+    [...f.models.files].forEach(x => fd.append('models', x));
+    fd.append('name', f.name.value);
+    fd.append('options', JSON.stringify({ style: f.style.value, voice: f.voice.value, language: f.language.value,
+      lang: f.lang.value || 'en', audience: f.audience.value, context: f.context.value,
+      use_ai: f.use_ai.checked, doc_images: f.doc_images.checked }));
+    $('#new-msg').textContent = 'Uploading…';
+    try {
+      const p = await api('/api/projects', { method: 'POST', body: fd });
+      go('#/p/' + p.id);
+      setTimeout(() => $('#btn-script')?.click(), 300);  // start writing the script right away
+    } catch (e) { $('#new-msg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  });
+  const list = await api('/api/projects');
+  $('#projects').innerHTML = list.length ? list.map(p => `
+    <div class="card proj" onclick="go('#/p/${p.id}')">
+      <b>${esc(p.name)}</b>
+      <div class="muted">${new Date(p.created * 1000).toLocaleString()}</div>
+      <div style="margin-top:8px">${p.has_script ? `<span class="tag">${p.scenes} scenes</span>` : '<span class="tag warn">no script yet</span>'}
+      ${p.renders.length ? `<span class="tag">${p.renders.length} video${p.renders.length > 1 ? 's' : ''}</span>` : ''}
+      <span class="tag">${p.options.style}</span></div>
+    </div>`).join('') : '<div class="muted">No projects yet. Upload a protocol to start.</div>';
+}
+
+/* ------------------------------ project ------------------------------ */
+let P = null, SB = null, SEL = -1, DIRTY = false, POLL = null;
+
+async function showProject(id) {
+  $('#app').innerHTML = $('#tpl-project').innerHTML;
+  await loadProject(id);
+  $('#btn-script').onclick = async () => {
+    if (SB && !confirm('Write a new script? Your edits to the current script will be replaced.')) return;
+    try { watchJob(await api(`/api/projects/${P.id}/script`, { method: 'POST' })); } catch (e) { alert(e.message); }
+  };
+  $('#btn-render').onclick = async () => {
+    try { if (DIRTY) await saveScript(); watchJob(await api(`/api/projects/${P.id}/render`, { method: 'POST' })); }
+    catch (e) { alert(e.message); }
+  };
+  $('#btn-save').onclick = saveScript;
+  $('#btn-delete').onclick = async () => {
+    if (!confirm(`Delete "${P.name}" and its videos?`)) return;
+    await api(`/api/projects/${P.id}`, { method: 'DELETE' }); go('#/');
+  };
+  $('#btn-opts').onclick = async () => {
+    await api(`/api/projects/${P.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: { style: $('#o-style').value, voice: $('#o-voice').value, context: $('#o-context').value } }) });
+    await loadProject(P.id);
+  };
+  $('#add-files').onchange = async ev => {
+    const fd = new FormData();
+    [...ev.target.files].forEach(f => fd.append(/\.(step|stp|glb|gltf|obj|stl|ply|3mf)$/i.test(f.name) ? 'models' : 'photos', f));
+    try { await api(`/api/projects/${P.id}/files`, { method: 'POST', body: fd }); await loadProject(P.id); }
+    catch (e) { alert(e.message); }
+  };
+  $('#btn-add').onclick = () => {
+    if (!SB) return;
+    const at = SEL >= 0 ? SEL + 1 : SB.scenes.length;
+    SB.scenes.splice(at, 0, { kind: 'step', heading: 'New step', bullets: [], narration: '', step_number: null, image: null,
+      model_part: null, view3d: null, layout: 'checklist', items: [], machine_parts: [], highlight: null, power: null, svg: null });
+    markDirty(); renderList(); selectScene(at);
+  };
+  const running = P.jobs.find(j => j.status === 'running' || j.status === 'queued');
+  if (running) watchJob(running);
+}
+
+async function loadProject(id) {
+  P = await api('/api/projects/' + id);
+  if (!DIRTY) SB = P.storyboard;
+  $('#p-name').textContent = P.name;
+  $('#p-meta').textContent = `${P.docx} · ${P.options.style === 'motion' ? 'animated' : 'text slides'} · voice: ${P.options.voice}`
+    + (P.options.use_ai ? ' · Claude' : ' · offline script');
+  $('#o-style').value = P.options.style; $('#o-voice').value = P.options.voice; $('#o-context').value = P.options.context || '';
+  $('#files').textContent = `${P.photos.length} photo(s), ${P.models.length} 3D model(s)`;
+  $('#renders').innerHTML = P.renders.length ? P.renders.slice().reverse().map((r, i) => `
+     ${i === 0 ? `<video controls src="/api/projects/${P.id}/renders/${encodeURIComponent(r.name)}"></video>` : ''}
+     <div class="row" style="margin-top:6px"><a href="/api/projects/${P.id}/renders/${encodeURIComponent(r.name)}?download=true">⬇ ${esc(r.name)}</a>
+     <span class="muted">${(r.size / 1e6).toFixed(1)} MB · ${new Date(r.time * 1000).toLocaleString()}</span></div>`).join('')
+    : 'No video yet.';
+  renderList();
+  if (SB && SB.scenes.length) selectScene(Math.min(Math.max(SEL, 0), SB.scenes.length - 1));
+}
+
+function watchJob(job) {
+  clearInterval(POLL);
+  const box = $('#job'); box.classList.remove('hidden');
+  const show = j => {
+    $('#job-title').textContent = j.kind === 'script' ? 'Writing the script' : 'Rendering the video';
+    $('#job-msg').innerHTML = j.status === 'error' ? `<span class="err">${esc(j.error)}</span>` : esc(j.message);
+    $('#job-bar').style.width = (j.status === 'done' ? 100 : Math.max(3, j.progress * 100)) + '%';
+    const log = $('#job-log'); log.classList.toggle('hidden', !j.log.length); log.textContent = j.log.join('\n'); log.scrollTop = 1e9;
+    ['#btn-script', '#btn-render'].forEach(b => $(b).disabled = j.status === 'running' || j.status === 'queued');
+  };
+  show(job);
+  POLL = setInterval(async () => {
+    const j = await api('/api/jobs/' + job.id).catch(() => null);
+    if (!j) return;
+    show(j);
+    if (j.status === 'done' || j.status === 'error') {
+      clearInterval(POLL);
+      if (j.status === 'done') { if (j.kind === 'script') DIRTY = false; await loadProject(P.id); }
+    }
+  }, 1500);
+}
+
+/* ------------------------------ scene list & editor ------------------------------ */
+function renderList() {
+  const el = $('#scene-list');
+  if (!SB) { el.innerHTML = '<div class="muted">No script yet.</div>'; return; }
+  el.innerHTML = SB.scenes.map((s, i) => `
+    <div class="scene ${i === SEL ? 'sel' : ''}" onclick="selectScene(${i})">
+      <div class="n">${i + 1}</div>
+      <div style="flex:1;min-width:0"><div class="t">${esc(s.heading || '(no title)')}</div>
+      <div class="s">${esc(s.layout || s.kind)}${s.step_number ? ' · step ' + s.step_number : ''} — ${esc((s.narration || '').slice(0, 70))}</div></div>
+    </div>`).join('');
+}
+
+function markDirty() { DIRTY = true; $('#btn-save').disabled = false; $('#btn-save').classList.add('primary'); }
+
+async function saveScript() {
+  await api(`/api/projects/${P.id}/storyboard`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(SB) });
+  DIRTY = false; $('#btn-save').disabled = true; $('#btn-save').classList.remove('primary');
+}
+
+function opt(list, val, empty = true) {
+  return (empty ? `<option value="">—</option>` : '') + list.map(v => `<option ${v === val ? 'selected' : ''}>${esc(v)}</option>`).join('');
+}
+
+function selectScene(i) {
+  SEL = i; renderList();
+  const s = SB.scenes[i], images = Object.keys(SB.images || {});
+  const parts = [];
+  Object.keys(SB.models || {}).forEach(m => parts.push(m));
+  $('#scene-edit').innerHTML = `
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0">Scene ${i + 1}</h2>
+      <div class="row"><button class="small" onclick="move(-1)">↑</button><button class="small" onclick="move(1)">↓</button>
+      <button class="small" onclick="replay()">▶ Replay</button><button class="small danger" onclick="removeScene()">Delete</button></div>
+    </div>
+    <div class="preview-wrap" id="pv"><iframe id="frame" src="/motion/template.html"></iframe></div>
+    ${P.options.style === 'classic' ? '<div class="muted">Preview shows the animated style; the video uses text slides.</div>' : ''}
+    <div class="grid2">
+      <div><label>Title</label><input type="text" data-k="heading" value="${esc(s.heading)}"></div>
+      <div class="grid2">
+        <div><label>Type</label><select data-k="kind">${opt(KINDS, s.kind, false)}</select></div>
+        <div><label>Step no.</label><input type="number" data-k="step_number" value="${s.step_number ?? ''}"></div>
+      </div>
+    </div>
+    <label>Voice / caption</label><textarea data-k="narration">${esc(s.narration)}</textarea>
+    <div class="grid2">
+      <div><label>Layout</label><select data-k="layout">${opt(LAYOUTS, s.layout)}</select></div>
+      <div><label>Photo</label><select data-k="image">${opt(images, s.image)}</select></div>
+    </div>
+    <label>On-screen points (one per line)</label><textarea data-k="bullets">${esc((s.bullets || []).join('\n'))}</textarea>
+    <div class="grid2">
+      <div><label>Power badge</label><select data-k="power">${opt(['off', 'on'], s.power)}</select></div>
+      <div><label>3D view</label><div class="grid2"><input type="text" data-k="model_part" placeholder="model/part" value="${esc(s.model_part || '')}"><select data-k="view3d">${opt(['orbit', 'closeup', 'exploded'], s.view3d)}</select></div></div>
+    </div>
+    <div class="grid2">
+      <div><label>Machine parts, top to bottom (comma separated)</label><input type="text" data-k="machine_parts" value="${esc((s.machine_parts || []).join(', '))}"></div>
+      <div><label>Circled part</label><input type="text" data-k="highlight" value="${esc(s.highlight || '')}"></div>
+    </div>
+    <label>Equipment cards</label>
+    <table class="items-table" style="width:100%"><tbody id="items">${(s.items || []).map((it, k) => itemRow(it, k, images)).join('')}</tbody></table>
+    <button class="small" onclick="addItem()">+ Card</button>
+    <label>Animated diagram (SVG)</label><textarea class="code" data-k="svg" spellcheck="false">${esc(s.svg || '')}</textarea>`;
+  $('#scene-edit').querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => { readForm(); markDirty(); renderListSoon(); previewSoon(); }));
+  bindItems();
+  const frame = $('#frame');
+  frame.onload = () => { fitPreview(); preview(); };
+  new ResizeObserver(fitPreview).observe($('#pv'));
+}
+
+function itemRow(it, k, images) {
+  return `<tr data-i="${k}"><td><input type="text" data-f="label" placeholder="Label" value="${esc(it.label)}"></td>
+    <td><input type="text" data-f="detail" placeholder="Detail" value="${esc(it.detail || '')}"></td>
+    <td><select data-f="icon">${opt(ICONS, it.icon)}</select></td><td><select data-f="image">${opt(images, it.image)}</select></td>
+    <td><button class="small danger" onclick="delItem(${k})">✕</button></td></tr>`;
+}
+function bindItems() {
+  $('#items').querySelectorAll('[data-f]').forEach(el => el.addEventListener('input', () => {
+    const k = +el.closest('tr').dataset.i, f = el.dataset.f;
+    SB.scenes[SEL].items[k][f] = el.value || (f === 'detail' || f === 'label' ? '' : null);
+    markDirty(); previewSoon();
+  }));
+}
+function addItem() { SB.scenes[SEL].items = SB.scenes[SEL].items || []; SB.scenes[SEL].items.push({ label: 'Item', detail: '', icon: null, image: null }); markDirty(); selectScene(SEL); }
+function delItem(k) { SB.scenes[SEL].items.splice(k, 1); markDirty(); selectScene(SEL); }
+
+function readForm() {
+  const s = SB.scenes[SEL];
+  $('#scene-edit').querySelectorAll('[data-k]').forEach(el => {
+    const k = el.dataset.k, v = el.value;
+    if (k === 'bullets') s.bullets = v.split('\n').map(x => x.trim()).filter(Boolean);
+    else if (k === 'machine_parts') s.machine_parts = v.split(',').map(x => x.trim()).filter(Boolean);
+    else if (k === 'step_number') s.step_number = v === '' ? null : parseInt(v, 10);
+    else if (['layout', 'image', 'power', 'view3d', 'highlight', 'model_part', 'svg'].includes(k)) s[k] = v || null;
+    else s[k] = v;
+  });
+}
+function move(d) {
+  const j = SEL + d; if (j < 0 || j >= SB.scenes.length) return;
+  [SB.scenes[SEL], SB.scenes[j]] = [SB.scenes[j], SB.scenes[SEL]]; markDirty(); selectScene(j);
+}
+function removeScene() {
+  if (!confirm('Delete this scene?')) return;
+  SB.scenes.splice(SEL, 1); markDirty(); renderList();
+  if (SB.scenes.length) selectScene(Math.min(SEL, SB.scenes.length - 1)); else $('#scene-edit').innerHTML = '';
+}
+
+/* ------------------------------ live preview ------------------------------ */
+let pvTimer = null, listTimer = null;
+const previewSoon = () => { clearTimeout(pvTimer); pvTimer = setTimeout(preview, 400); };
+const renderListSoon = () => { clearTimeout(listTimer); listTimer = setTimeout(renderList, 600); };
+function fitPreview() {
+  const w = $('#pv')?.clientWidth; if (w) $('#frame').style.transform = `scale(${w / 1920})`;
+}
+async function preview() {
+  const frame = $('#frame'); if (!frame?.contentWindow?.render) return;
+  try {
+    const payload = await api(`/api/projects/${P.id}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenes: SB.scenes, index: SEL }) });
+    frame.contentWindow.render(payload);
+    replay();
+  } catch (e) { console.warn(e); }
+}
+function replay() {
+  const w = $('#frame')?.contentWindow; if (!w) return;
+  w.document.getAnimations().forEach(a => { a.currentTime = 0; a.play(); });
+  w.document.querySelectorAll('svg').forEach(s => { try { s.setCurrentTime(0); s.unpauseAnimations(); } catch (e) {} });
+}
+
+window.addEventListener('beforeunload', e => { if (DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+route();
+</script>
+</body>
+</html>

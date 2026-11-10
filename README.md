@@ -10,6 +10,46 @@ protocol.docx ──► read headings, lists, tables
               ──► protocol.mp4 (1080p, H.264 + AAC)
 ```
 
+## Web app (for the team)
+
+A browser app around the same engine: upload a protocol, review the script
+scene by scene with a live animated preview, render, watch and download.
+
+**With Docker (recommended: same setup on a PC, a server or the cloud):**
+
+```bash
+cp .env.example .env        # put your ANTHROPIC_API_KEY (and optionally a password) in .env
+docker compose up -d --build
+```
+
+Then open http://localhost:8000 (or http://<machine-name>:8000 from colleagues' PCs).
+Projects, uploads and videos are kept in `./protovid-data` on the host.
+
+**Without Docker:**
+
+```bash
+pip install -e ".[web,3d]"
+playwright install chromium
+protovid-web --host 0.0.0.0 --port 8000
+```
+
+How it works:
+
+1. **New video:** drop the Word protocol, optional photos and CAD files, choose
+   style, voice, language and audience, add notes for Claude (e.g. which machine).
+2. **Script:** Claude (or the offline mode) writes the scenes; progress is shown live.
+3. **Review:** pick a scene to edit its title, caption/voice text, layout, photo,
+   points, equipment cards, machine parts and circled part, power badge, 3D view
+   or the animated SVG. The preview replays the animation as you type. Reorder,
+   add or delete scenes, then **Save script**.
+4. **Render:** progress bar while it records; the video then plays in the page
+   with a download link. Every render is kept.
+
+Settings (environment variables): `ANTHROPIC_API_KEY` (Claude scripts),
+`PROTOVID_PASSWORD` (asks for a password; any user name), `PROTOVID_DATA`
+(projects folder). Renders run one at a time. Use HTTPS (a reverse proxy) if
+you put it on the internet.
+
 ## Install
 
 You need Python 3.10+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH.

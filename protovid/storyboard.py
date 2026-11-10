@@ -413,13 +413,33 @@ def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None 
     skipping = False
     paragraphs: list[str] = []
     section_image: str | None = None
+    rows: list[list[str]] = []   # table rows of the current section, [IMAGE] markers kept
     step_no = 0
 
+    def table_items() -> list[dict]:
+        """Equipment table -> cards: first text cell = label, next text cell = detail, picture in the row."""
+        out = []
+        for k, cells in enumerate(rows):
+            texts = [marker.sub("", c).strip() for c in cells]
+            texts = [t for t in texts if t and t != "☐"]
+            while texts and not re.search(r"[A-Za-zÀ-ÿ]", texts[0]):
+                texts.pop(0)  # leading Ref / number columns
+            pics = [m for c in cells for m in marker.findall(c)]
+            if not texts:
+                continue
+            if k == 0 and not pics and re.search(r"\b(item|description|quantit|qty|image|ref|désignation|article)\b",
+                                                 " ".join(texts), re.I):
+                continue  # header row
+            label = re.sub(r"\s*\(.*?\)", "", texts[0]).strip() or texts[0]
+            detail = texts[1] if len(texts) > 1 and not re.match(r"depends on", texts[1], re.I) else ""
+            out.append({"label": label[:40], "detail": detail[:40], "icon": None, "image": pics[0] if pics else None})
+        return out
+
     def flush():
-        nonlocal step_no, items, paragraphs, section_image, skipping
+        nonlocal step_no, items, paragraphs, section_image, skipping, rows
         heading = section or "Overview"
         if section and (_SKIP_SECTION.search(section) or skipping):
-            items, paragraphs, section_image = [], [], None
+            items, paragraphs, section_image, rows = [], [], None, []
             return
         is_safety = bool(section and _SAFETY.search(section))
         is_materials = bool(section and _MATERIALS.search(section)) and not is_safety
@@ -444,11 +464,12 @@ def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None 
                 img = next((i for _, i in chunk if i), section_image)
                 scenes.append(Scene(kind, heading, texts, " ".join(_sentence(t) for t in texts), image=img))
             items = []
-        if is_materials and (items or paragraphs):
-            names = [t for t, _, _ in items] or [
-                p.split(" – ")[1] if p.count(" – ") >= 2 else p for p in paragraphs[1:] or paragraphs]
-            scenes.append(Scene("materials", heading, names[:6], "You will need: " + ", ".join(names) + ".",
-                                image=section_image))
+        if is_materials and (items or paragraphs or rows):
+            cards = table_items() or [{"label": t, "detail": "", "icon": None, "image": None} for t, _, _ in items]
+            names = [c["label"] for c in cards] or paragraphs[:6]
+            sc = Scene("materials", heading, names[:6], "Here is the equipment you need.", image=section_image)
+            sc.items = cards[:9]
+            scenes.append(sc)
             paragraphs = []
         if paragraphs and len(paragraphs) > 6:
             paragraphs = paragraphs[:1]  # long tables: keep the intro sentence only
@@ -456,7 +477,7 @@ def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None 
             body = " ".join(paragraphs)
             kind = "warning" if _WARN.search(body) else "overview"
             scenes.append(Scene(kind, heading, [p[:90] for p in paragraphs[:3]], body, image=section_image))
-        items, paragraphs, section_image = [], [], None
+        items, paragraphs, section_image, rows = [], [], None, []
 
     for line in protocol.text.splitlines():
         line = line.strip()
@@ -471,6 +492,8 @@ def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None 
             continue
         if line.startswith("(") and line.endswith(")"):
             continue  # figure caption
+        if line.startswith("|"):
+            rows.append([c.strip() for c in line.strip("|").split("|")])
         inline = marker.findall(line)
         if inline:
             section_image = section_image or inline[0]

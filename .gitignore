@@ -8,3 +8,5 @@ frames/
 examples/images/
 *_images/
 examples/models/
+protovid-data/
+.env

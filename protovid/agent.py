@@ -156,6 +156,36 @@ def _default_layout(scene, has_photo: bool, has_3d: bool) -> str:
     return "checklist"
 
 
+def motion_payload(board: Storyboard, scene, *, layout: str | None = None, has3d: bool = False,
+                   url_for: Callable[[Path], str] | None = None) -> dict:
+    """The data the motion template renders for one scene.
+
+    ``url_for`` turns a local image path into a URL (file:// by default; the web app passes
+    an HTTP URL so the same payload previews in the browser).
+    """
+    url_for = url_for or (lambda p: p.resolve().as_uri())
+    photo = board.image_path(scene.image)
+    layout = layout or _default_layout(scene, photo is not None, has3d)
+    if layout == "media" and not (photo or has3d):
+        layout = "checklist"
+    total_steps = max([s.step_number or 0 for s in board.scenes] or [0])
+    items = scene.items or ([{"label": b, "detail": "", "icon": guess_icon(b), "image": None}
+                             for b in scene.bullets] if layout == "items" else [])
+    return {
+        "kind": scene.kind, "heading": scene.heading, "bullets": scene.bullets,
+        "narration": scene.narration, "step_number": scene.step_number, "total_steps": total_steps,
+        "layout": layout, "labels": board.labels, "machine_name": board.machine_name,
+        "machine_parts": scene.machine_parts, "highlight": scene.highlight, "power": scene.power,
+        "svg": scene.svg,
+        "items": [{**it, "icon": it.get("icon") or guess_icon(it.get("label", "")),
+                   "image_url": (url_for(p) if (p := board.image_path(it.get("image"))) else None)}
+                  for it in items],
+        "image_url": url_for(photo) if photo else None,
+        "has3d": bool(has3d and layout == "media"),
+        "duration": 8,
+    }
+
+
 def _render_motion(board: Storyboard, out_path: Path, *, voice: str, lang: str,
                    work_dir: Path | None, log: Callable[[str], None]) -> Path:
     from .motion import MotionRenderer
@@ -182,21 +212,7 @@ def _render_motion(board: Storyboard, out_path: Path, *, voice: str, lang: str,
                 layout = "checklist"
             log(f"[{i + 1}/{total}] {layout:<9} {scene.heading}")
 
-            items = scene.items or ([{"label": b, "detail": "", "icon": guess_icon(b), "image": None}
-                                     for b in scene.bullets] if layout == "items" else [])
-            payload = {
-                "kind": scene.kind, "heading": scene.heading, "bullets": scene.bullets,
-                "narration": scene.narration, "step_number": scene.step_number, "total_steps": total_steps,
-                "layout": layout, "labels": board.labels, "machine_name": board.machine_name,
-                "machine_parts": scene.machine_parts, "highlight": scene.highlight, "power": scene.power,
-                "svg": scene.svg,
-                "items": [{**it, "icon": it.get("icon") or guess_icon(it.get("label", "")),
-                           "image_url": (p.resolve().as_uri() if (p := board.image_path(it.get("image"))) else None)}
-                          for it in items],
-                "image_url": photo.resolve().as_uri() if photo else None,
-                "has3d": bool(resolved and layout == "media"),
-                "duration": 8,
-            }
+            payload = motion_payload(board, scene, layout=layout, has3d=resolved is not None)
             info = mr.prepare(payload)
 
             try:
