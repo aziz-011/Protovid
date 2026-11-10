@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-doc-images", action="store_true",
                    help="Ignore pictures embedded in the Word document")
     p.add_argument("--no-ai", action="store_true", help="Build the script offline from headings/lists (no Claude)")
-    p.add_argument("--voice", choices=["gtts", "espeak", "none"], default="gtts", help="Narration engine")
+    p.add_argument("--voice", choices=["gtts", "festival", "espeak", "none"], default="gtts", help="Narration engine")
     p.add_argument("--lang", default="en", help="Narration language code for TTS, e.g. en, fr, es")
     p.add_argument("--language", help="Ask Claude to write the script in this language, e.g. French")
     p.add_argument("--audience", help="Who the video is for, e.g. 'new field technicians'")

@@ -57,7 +57,7 @@ Useful options:
 | `--language French --lang fr` | Script in French, French voice |
 | `--script-only` | Only write the storyboard JSON so you can review/edit it |
 | `protovid my_protocol.storyboard.json` | Render a video from an (edited) storyboard |
-| `--voice gtts \| espeak \| none` | Voice engine: Google TTS (default, needs internet), offline espeak-ng, or silent |
+| `--voice gtts \| festival \| espeak \| none` | Voice: Google TTS (default, needs internet); offline Festival (`apt install festival festvox-us-slt-hts`, English); offline eSpeak, using an MBROLA voice if installed (`mbrola-us2`, `mbrola-fr1`...); or silent |
 | `--no-doc-images` | Don't use the pictures embedded in the Word file |
 | `--no-ai` | Build the script from the document's headings and lists, without Claude |
 | `--keep-frames DIR` | Keep the slide PNGs, audio and clips |
