@@ -17,6 +17,7 @@ from .voice import estimate_seconds, synthesize
 
 def build_storyboard(docx_path: Path, *, use_ai: bool = True, language: str | None = None,
                      audience: str | None = None,
+                     context: str | None = None,
                      images: list[ImageAsset] | None = None,
                      figures_dir: Path | None = None,
                      models: ModelLibrary | None = None,
@@ -28,7 +29,8 @@ def build_storyboard(docx_path: Path, *, use_ai: bool = True, language: str | No
         log(f"Pictures found in the document: {len(doc_images)} (saved to {figures_dir})")
     all_images = merge(doc_images, images or [])
     if use_ai:
-        return claude_storyboard(protocol, language=language, audience=audience, images=all_images, models=models)
+        return claude_storyboard(protocol, language=language, audience=audience, context=context,
+                                 images=all_images, models=models)
     return heuristic_storyboard(protocol, images=all_images, models=models)
 
 

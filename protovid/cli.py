@@ -29,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--lang", default="en", help="Narration language code for TTS, e.g. en, fr, es")
     p.add_argument("--language", help="Ask Claude to write the script in this language, e.g. French")
     p.add_argument("--audience", help="Who the video is for, e.g. 'new field technicians'")
+    p.add_argument("--context",
+                   help="Extra instructions for the script, e.g. 'The machine shown is the Kaia water fountain'")
     p.add_argument("--script-only", action="store_true", help="Only write the storyboard JSON so you can edit it")
     p.add_argument("--keep-frames", type=Path, help="Keep slides/audio/clips in this folder")
     args = p.parse_args(argv)
@@ -59,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"{' with Claude' if not args.no_ai else ''}...")
             board = build_storyboard(args.input, use_ai=not args.no_ai,
                                      language=args.language, audience=args.audience,
+                                     context=args.context,
                                      images=images, models=library,
                                      figures_dir=None if args.no_doc_images
                                      else args.input.with_name(args.input.stem + "_images"))

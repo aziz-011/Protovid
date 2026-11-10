@@ -189,6 +189,7 @@ def claude_storyboard(
     *,
     language: str | None = None,
     audience: str | None = None,
+    context: str | None = None,
     model: str = MODEL,
     images: list[ImageAsset] | None = None,
     models: ModelLibrary | None = None,
@@ -202,6 +203,8 @@ def claude_storyboard(
         extra.append(f"Write the bullets and narration in {language}.")
     if audience:
         extra.append(f"The audience is: {audience}.")
+    if context:
+        extra.append(f"Additional context from the author: {context}")
 
     user_content = (
         f"<protocol title=\"{protocol.title}\">\n{protocol.text}\n</protocol>\n\n"

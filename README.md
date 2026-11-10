@@ -40,6 +40,7 @@ Useful options:
 | `-m model.step` | 3D CAD model (STEP, GLB, OBJ, STL); repeat `-m` for several |
 | `-i photos/` | Folder of your photos (machines, components, tools) to show on the slides |
 | `--audience "new field technicians"` | Pitch the script at a given audience |
+| `--context "The machine shown is the Kaia water fountain"` | Extra instructions for the script (machine, site, wording...) |
 | `--language French --lang fr` | Script in French, French voice |
 | `--script-only` | Only write the storyboard JSON so you can review/edit it |
 | `protovid my_protocol.storyboard.json` | Render a video from an (edited) storyboard |
