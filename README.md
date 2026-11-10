@@ -37,6 +37,7 @@ Useful options:
 | Option | What it does |
 |---|---|
 | `-o out.mp4` | Choose the output file |
+| `-m model.step` | 3D CAD model (STEP, GLB, OBJ, STL); repeat `-m` for several |
 | `-i photos/` | Folder of your photos (machines, components, tools) to show on the slides |
 | `--audience "new field technicians"` | Pitch the script at a given audience |
 | `--language French --lang fr` | Script in French, French voice |
@@ -46,6 +47,41 @@ Useful options:
 | `--no-doc-images` | Don't use the pictures embedded in the Word file |
 | `--no-ai` | Build the script from the document's headings and lists, without Claude |
 | `--keep-frames DIR` | Keep the slide PNGs, audio and clips |
+
+### 3D views from your CAD models
+
+Give Protovid your CAD assembly and the video shows the machine in 3D, with
+the part each step is about highlighted and the rest of the machine faded:
+
+```bash
+pip install -e ".[3d]"
+protovid procedure.docx -m dosing_pump_assembly.step -m bag_support_A.step
+```
+
+- **Formats:** STEP/STP (straight from SolidWorks, Fusion, Inventor, FreeCAD...),
+  GLB/glTF, OBJ, STL. STEP or GLB keep the part names from the CAD tree, and
+  **those names are what Claude uses to pick the part for each step**. Keep them
+  meaningful (`Rotor`, `Lower lid`, `Mineralisation tube`, not `Part37`).
+  STL/OBJ exports are usually one single part, so they only allow whole-model views.
+- **Views Claude can choose per slide:**
+  - `closeup`: zooms onto the part (e.g. the rotor to turn, the lid to open) and rocks gently.
+  - `exploded`: parts move apart and back together; good for mounting/assembly steps.
+  - `orbit`: the whole assembly turns, optionally with one part highlighted.
+- If the slide also has a photo, the real photo is shown as a small inset next
+  to the model, so the viewer links the model to the real machine.
+- Copies of a part (`Screw M4:1`, `Screw M4:2`...) are grouped and highlighted together.
+- If a model appears lying on its side, set the up axis: `--model-up z` (or `y`).
+- To change a choice, edit `"model_part"` / `"view3d"` in the storyboard JSON
+  (pass `-m` again when rendering an edited storyboard if the model moved).
+- Rendering uses your graphics card through VTK. On a headless Linux server,
+  install OSMesa first (`sudo apt install libosmesa6`).
+
+Try it with the demo model:
+
+```bash
+python examples/make_sample_model.py
+protovid examples/sample_protocol.docx -m examples/models/dosing_pump_demo.glb
+```
 
 ### Pictures already in the Word file
 
@@ -106,6 +142,7 @@ protovid examples/sample_protocol.docx -i examples/images
 
 | File | Role |
 |---|---|
+| `protovid/render3d.py` | Loads CAD models (parts by name) and renders the 3D orbit / close-up / exploded animations |
 | `protovid/images.py` | Loads your photo folder, prepares the copies sent to Claude, matches by file name offline |
 | `protovid/docx_reader.py` | Reads the `.docx` in order: title, headings, bullet and numbered lists, tables |
 | `protovid/storyboard.py` | Claude (`claude-opus-5-5`, structured JSON output) turns the text into scenes; offline heuristic fallback |

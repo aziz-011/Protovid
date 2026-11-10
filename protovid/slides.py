@@ -74,13 +74,56 @@ def _paste_photo(canvas: Image.Image, photo_path: Path, box: tuple[int, int, int
     canvas.paste(ph, (cx + 20, cy + 20))
 
 
+PANEL_BOX = (int(W * 0.53), 110, W - 90, H - 120)   # right-hand media area
+PANEL_PAD = 20
+
+
+def panel_inner() -> tuple[int, int, int, int]:
+    """(x, y, width, height) of the area the 3D animation is overlaid on (even sizes for H.264)."""
+    x0, y0, x1, y1 = PANEL_BOX
+    w = (x1 - x0 - 2 * PANEL_PAD) // 2 * 2
+    h = (y1 - y0 - 2 * PANEL_PAD) // 2 * 2
+    return x0 + PANEL_PAD, y0 + PANEL_PAD, w, h
+
+
+def _draw_3d_panel(canvas: Image.Image, accent, photo: Path | None) -> None:
+    """White card where the 3D animation goes (the tag and photo inset go in the foreground layer)."""
+    x0, y0, x1, y1 = PANEL_BOX
+    d = ImageDraw.Draw(canvas)
+    d.rounded_rectangle([x0 + 8, y0 + 10, x1 + 8, y1 + 10], 24, fill=(210, 214, 220))
+    d.rounded_rectangle([x0, y0, x1, y1], 24, fill=(255, 255, 255), outline=accent, width=4)
+
+
+def render_panel_foreground(accent, photo: Path | None, out: Path) -> Path:
+    """Transparent full-frame layer drawn OVER the 3D animation: '3D' tag + real-photo inset."""
+    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    x0, y0, x1, y1 = PANEL_BOX
+    d = ImageDraw.Draw(canvas)
+    f = _font("bold", 26)
+    d.rounded_rectangle([x0 + 24, y1 - 64, x0 + 112, y1 - 24], 12, fill=accent)
+    d.text((x0 + 68, y1 - 44), "3D", font=f, fill=(255, 255, 255), anchor="mm")
+    if photo is not None:  # real photo inset, bottom-right corner (drawn over by nothing)
+        with Image.open(photo) as ph:
+            ph = ImageOps.exif_transpose(ph).convert("RGB")
+            ph = ImageOps.contain(ph, (260, 220), Image.LANCZOS)
+        px, py = x1 - ph.width - 30, y1 - ph.height - 30
+        d.rounded_rectangle([px - 8, py - 8, px + ph.width + 8, py + ph.height + 8], 12,
+                            fill=(255, 255, 255), outline=accent, width=3)
+        canvas.paste(ph, (px, py))
+    canvas.save(out)
+    return out
+
+
 def render_scene(scene: Scene, index: int, total: int, doc_title: str, out: Path,
-                 photo: Path | None = None) -> Path:
+                 photo: Path | None = None, panel3d: bool = False) -> Path:
     theme = THEMES.get(scene.kind, THEMES["step"])
     img = Image.new("RGB", (W, H), theme["bg"])
     d = ImageDraw.Draw(img)
     width = W - 2 * MARGIN
-    if photo is not None and scene.kind not in ("title", "summary"):
+    if panel3d and scene.kind not in ("title", "summary"):
+        width = int(W * 0.50) - MARGIN
+        _draw_3d_panel(img, theme["accent"], photo)
+    elif photo is not None and scene.kind not in ("title", "summary"):
         # Text column on the left, photo on the right
         width = int(W * 0.50) - MARGIN
         _paste_photo(img, photo, (int(W * 0.53), 110, W - 90, H - 120), theme["accent"])

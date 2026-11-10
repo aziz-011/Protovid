@@ -23,17 +23,35 @@ def audio_duration(path: Path) -> float:
     return float(out.stdout.strip())
 
 
-def make_clip(slide: Path, audio: Path | None, seconds: float, out: Path) -> Path:
+def make_clip(slide: Path, audio: Path | None, seconds: float, out: Path,
+              anim_frames: Path | None = None, anim_fps: int = 24,
+              anim_xy: tuple[int, int] = (0, 0),
+              foreground: Path | None = None) -> Path:
+    """One clip per slide. ``anim_frames``: folder of f0000.png... RGBA frames looped over the slide.
+
+    ``foreground``: full-frame RGBA PNG laid over the animation (labels, photo inset).
+    """
     cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-i", str(slide)]
     if audio is not None:
         cmd += ["-i", str(audio)]
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+    if anim_frames is not None:
+        cmd += ["-stream_loop", "-1", "-framerate", str(anim_fps), "-i", str(anim_frames / "f%04d.png")]
+        x, y = anim_xy
+        graph = f"[2:v]format=rgba[m];[0:v][m]overlay={x}:{y}:shortest=0:eof_action=repeat"
+        if foreground is not None:
+            cmd += ["-loop", "1", "-framerate", "30", "-i", str(foreground)]
+            graph += "[a];[a][3:v]overlay=0:0"
+        graph += ",fps=30,fade=t=in:st=0:d=0.4,format=yuv420p[v]"
+        video_args = ["-filter_complex", graph, "-map", "[v]", "-map", "1:a"]
+    else:
+        video_args = ["-vf", "fade=t=in:st=0:d=0.4,format=yuv420p"]
     cmd += [
         "-t", f"{seconds:.2f}",
-        "-vf", "fade=t=in:st=0:d=0.4,format=yuv420p",
+        *video_args,
         "-af", f"apad,atrim=0:{seconds:.2f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage",
+        "-c:v", "libx264", "-preset", "veryfast", *([] if anim_frames else ["-tune", "stillimage"]), "-r", "30",
         "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "160k",
         "-shortest", str(out),
     ]

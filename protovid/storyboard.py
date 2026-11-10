@@ -13,7 +13,8 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 
 from .docx_reader import ProtocolDoc
-from .images import ImageAsset, claude_image_blocks, match_by_name
+from .images import MAX_IMAGES_FOR_CLAUDE, ImageAsset, claude_image_blocks, match_by_name
+from .render3d import VIEWS, ModelLibrary, match_part
 
 MODEL = "claude-opus-5-5"
 
@@ -27,6 +28,8 @@ class Scene:
     bullets: list[str] = field(default_factory=list)
     narration: str = ""
     step_number: int | None = None
+    model_part: str | None = None   # 'model' or 'model/part' from Storyboard.models
+    view3d: str | None = None       # orbit | closeup | exploded
     image: str | None = None  # a key of Storyboard.images
 
 
@@ -35,6 +38,7 @@ class Storyboard:
     title: str
     scenes: list[Scene]
     images: dict[str, str] = field(default_factory=dict)  # image name -> file path
+    models: dict[str, dict] = field(default_factory=dict)  # model name -> {"path": ..., "up": "y"|"z"}
 
     def image_path(self, name: str | None) -> Path | None:
         if not name or name not in self.images:
@@ -44,7 +48,7 @@ class Storyboard:
 
     def to_json(self) -> str:
         return json.dumps(
-            {"title": self.title, "images": self.images,
+            {"title": self.title, "images": self.images, "models": self.models,
              "scenes": [asdict(s) for s in self.scenes]},
             indent=2,
             ensure_ascii=False,
@@ -61,6 +65,8 @@ class Storyboard:
                 narration=s.get("narration", "").strip(),
                 step_number=s.get("step_number"),
                 image=s.get("image") or None,
+                model_part=s.get("model_part") or None,
+                view3d=s.get("view3d") if s.get("view3d") in VIEWS else None,
             )
             for s in data["scenes"]
         ]
@@ -69,7 +75,7 @@ class Storyboard:
             for sc in scenes:
                 if sc.image and sc.image not in images:
                     images[sc.image] = str(Path(data["images_dir"]) / sc.image)
-        return cls(title=data["title"], scenes=scenes, images=images)
+        return cls(title=data["title"], scenes=scenes, images=images, models=dict(data.get("models") or {}))
 
 
 # --------------------------------------------------------------------------- #
@@ -114,7 +120,33 @@ IMAGES_PROMPT = """
 Photos of the equipment are attached, each preceded by its file name. Pictures embedded in the protocol also appear in the protocol text as [IMAGE file-name] markers where they belong, usually followed by their caption; prefer them for the step they sit next to. For every scene, set "image" to the file name of the photo that best shows the machine, component, tool or material the scene talks about, so the viewer can recognise it. Look at what each photo actually shows; use the file name as a hint. Reuse a photo across scenes when it fits. Use null when no photo clearly matches - a wrong picture is worse than none. When a photo shows a part the protocol names, you may use the name visible in the photo in the bullets, but do not describe details you cannot see.
 """
 
-def storyboard_schema(image_names: list[str]) -> dict:
+MODELS_PROMPT = """
+3D CAD models of the equipment are available; their parts are listed in the \
+user message as model/part ids. For a scene where seeing the equipment in \
+3D helps the viewer (where a part is, how it is oriented, how parts fit \
+together), set "model_part" and "view3d":
+- "closeup" on the part the step acts on (e.g. the rotor to turn, the lid \
+to open): the part is highlighted and the rest of the machine is faded.
+- "exploded" with a whole model id for mounting / assembly steps.
+- "orbit" with a whole model id (or a part) for an overview of the assembly.
+Use null for both when 3D adds nothing (safety reminders, measurements, \
+paperwork). A scene may have both a photo and a 3D view; the photo is then \
+shown as a small inset next to the model, which helps the viewer connect \
+the model to the real machine. Only choose a part whose name clearly \
+corresponds to what the step talks about.
+"""
+
+
+def storyboard_schema(image_names: list[str], part_ids: list[str] | None = None) -> dict:
+    part_ids = part_ids or []
+    part_field = (
+        {"anyOf": [{"type": "string", "enum": part_ids}, {"type": "null"}]}
+        if part_ids else {"type": "null"}
+    )
+    view_field = (
+        {"anyOf": [{"type": "string", "enum": VIEWS}, {"type": "null"}]}
+        if part_ids else {"type": "null"}
+    )
     image_field = (
         {"anyOf": [{"type": "string", "enum": image_names}, {"type": "null"}]}
         if image_names else {"type": "null"}
@@ -134,8 +166,11 @@ def storyboard_schema(image_names: list[str]) -> dict:
                         "narration": {"type": "string"},
                         "step_number": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
                         "image": image_field,
+                        "model_part": part_field,
+                        "view3d": view_field,
                     },
-                    "required": ["kind", "heading", "bullets", "narration", "step_number", "image"],
+                    "required": ["kind", "heading", "bullets", "narration", "step_number", "image",
+                                 "model_part", "view3d"],
                     "additionalProperties": False,
                 },
             },
@@ -156,6 +191,7 @@ def claude_storyboard(
     audience: str | None = None,
     model: str = MODEL,
     images: list[ImageAsset] | None = None,
+    models: ModelLibrary | None = None,
 ) -> Storyboard:
     import anthropic
 
@@ -174,18 +210,21 @@ def claude_storyboard(
     )
     images = images or []
     image_blocks = claude_image_blocks(images)
-    usable = [b["text"].removeprefix("Image file: ") for b in image_blocks if b["type"] == "text"]
+    usable = [a.name for a in images[:MAX_IMAGES_FOR_CLAUDE]]
+    part_ids = models.part_ids() if models else []
+    if part_ids:
+        user_content = models.describe() + "\n\n" + user_content
     content = image_blocks + [{"type": "text", "text": user_content}]
 
     with client.beta.messages.stream(
         model=model,
         max_tokens=64000,
-        system=SYSTEM_PROMPT + (IMAGES_PROMPT if usable else ""),
+        system=SYSTEM_PROMPT + (IMAGES_PROMPT if usable else "") + (MODELS_PROMPT if part_ids else ""),
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
         output_config={
             "effort": "medium",
-            "format": {"type": "json_schema", "schema": storyboard_schema(usable)},
+            "format": {"type": "json_schema", "schema": storyboard_schema(usable, part_ids)},
         },
         messages=[{"role": "user", "content": content}],
     ) as stream:
@@ -206,7 +245,15 @@ def claude_storyboard(
     for scene in board.scenes:
         if scene.image not in usable:
             scene.image = None
+        if scene.model_part not in part_ids:
+            scene.model_part = None
+        if scene.model_part and not scene.view3d:
+            scene.view3d = "closeup" if "/" in scene.model_part else "orbit"
+        if not scene.model_part:
+            scene.view3d = None
     board.images = {a.name: str(a.path) for a in images}
+    if models:
+        board.models = {m.name: {"path": str(m.path), "up": m.up} for m in models.models.values()}
     return board
 
 
@@ -227,7 +274,8 @@ def _sentence(text: str) -> str:
     return text if text.endswith((".", "!", "?")) else text + "."
 
 
-def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None = None) -> Storyboard:
+def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None = None,
+                         models: ModelLibrary | None = None) -> Storyboard:
     images = images or []
     scenes: list[Scene] = [
         Scene(kind="title", heading=protocol.title, narration=f"{_sentence(protocol.title)} A step by step guide.")
@@ -324,4 +372,15 @@ def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None 
     for scene in scenes:
         if scene.kind != "title" and not scene.image and images:
             scene.image = match_by_name(" ".join([scene.heading, *scene.bullets]), images)
+    if models:
+        board.models = {m.name: {"path": str(m.path), "up": m.up} for m in models.models.values()}
+        first_model = next(iter(models.models))
+        for scene in scenes:
+            if scene.kind == "step":
+                pid = match_part(" ".join([scene.heading, *scene.bullets]), models)
+                if pid:
+                    scene.model_part, scene.view3d = pid, "closeup"
+        overview = next((sc for sc in scenes if sc.kind == "overview"), None)
+        if overview and not overview.model_part:
+            overview.model_part, overview.view3d = first_model, "orbit"
     return board

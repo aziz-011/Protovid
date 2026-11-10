@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .agent import build_storyboard, render_video
 from .images import load_images
+from .render3d import ModelLibrary, load_model
 from .storyboard import Storyboard, StoryboardError
 
 
@@ -17,6 +18,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--output", type=Path, help="Output .mp4 (default: next to the input)")
     p.add_argument("-i", "--images", type=Path,
                    help="Folder of photos (machines, components, tools...) to show on the slides")
+    p.add_argument("-m", "--model", type=Path, action="append", default=[],
+                   help="3D CAD model (STEP, GLB, OBJ, STL). Repeat for several models")
+    p.add_argument("--model-up", choices=["y", "z"],
+                   help="Which axis is 'up' in the 3D model (default: y for STEP/GLB/OBJ, z for STL)")
     p.add_argument("--no-doc-images", action="store_true",
                    help="Ignore pictures embedded in the Word document")
     p.add_argument("--no-ai", action="store_true", help="Build the script offline from headings/lists (no Claude)")
@@ -32,6 +37,13 @@ def main(argv: list[str] | None = None) -> int:
         p.error(f"File not found: {args.input}")
 
     images = load_images(args.images) if args.images else []
+    models = []
+    for mp in args.model:
+        m = load_model(mp, up=args.model_up)
+        print(f"3D model: {mp.name} - {len(m.part_names)} parts: {', '.join(m.part_names[:12])}"
+              f"{' ...' if len(m.part_names) > 12 else ''}")
+        models.append(m)
+    library = ModelLibrary(models) if models else None
     if args.images:
         print(f"Images: {len(images)} found in {args.images}")
 
@@ -40,12 +52,14 @@ def main(argv: list[str] | None = None) -> int:
             board = Storyboard.from_json(args.input.read_text(encoding="utf-8"))
             for a in images:  # make a (new) image folder available to an edited storyboard
                 board.images.setdefault(a.name, str(a.path))
+            for m in models:
+                board.models[m.name] = {"path": str(m.path), "up": m.up}
         else:
             print(f"Reading {args.input.name} and writing the script"
                   f"{' with Claude' if not args.no_ai else ''}...")
             board = build_storyboard(args.input, use_ai=not args.no_ai,
                                      language=args.language, audience=args.audience,
-                                     images=images,
+                                     images=images, models=library,
                                      figures_dir=None if args.no_doc_images
                                      else args.input.with_name(args.input.stem + "_images"))
     except StoryboardError as exc:

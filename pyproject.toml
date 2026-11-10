@@ -12,6 +12,14 @@ dependencies = [
   "python-docx>=1.1",
   "pillow>=10",
   "gTTS>=2.5",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+3d = [
+  "trimesh>=4.5",
+  "pyvista>=0.44",
+  "cascadio>=0.0.13",   # reads STEP files
 ]
 
 [project.scripts]

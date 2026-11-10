@@ -7,3 +7,4 @@ frames/
 .venv/
 examples/images/
 *_images/
+examples/models/
