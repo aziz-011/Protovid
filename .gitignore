@@ -5,3 +5,4 @@ __pycache__/
 examples/*.docx
 frames/
 .venv/
+examples/images/

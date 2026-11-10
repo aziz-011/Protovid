@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .storyboard import Scene
 
@@ -58,17 +58,43 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[st
     return lines
 
 
-def render_scene(scene: Scene, index: int, total: int, doc_title: str, out: Path) -> Path:
+def _paste_photo(canvas: Image.Image, photo_path: Path, box: tuple[int, int, int, int],
+                 accent: tuple[int, int, int]) -> None:
+    """Fit the photo inside ``box`` (keeps aspect ratio), on a white card with an accent border."""
+    x0, y0, x1, y1 = box
+    with Image.open(photo_path) as ph:
+        ph = ImageOps.exif_transpose(ph).convert("RGB")
+        ph = ImageOps.contain(ph, (x1 - x0 - 40, y1 - y0 - 40), Image.LANCZOS)
+    card_w, card_h = ph.width + 40, ph.height + 40
+    cx = x0 + (x1 - x0 - card_w) // 2
+    cy = y0 + (y1 - y0 - card_h) // 2
+    d = ImageDraw.Draw(canvas)
+    d.rounded_rectangle([cx + 8, cy + 10, cx + card_w + 8, cy + card_h + 10], 24, fill=(0, 0, 0, 40) if canvas.mode == "RGBA" else (210, 214, 220))
+    d.rounded_rectangle([cx, cy, cx + card_w, cy + card_h], 24, fill=(255, 255, 255), outline=accent, width=4)
+    canvas.paste(ph, (cx + 20, cy + 20))
+
+
+def render_scene(scene: Scene, index: int, total: int, doc_title: str, out: Path,
+                 photo: Path | None = None) -> Path:
     theme = THEMES.get(scene.kind, THEMES["step"])
     img = Image.new("RGB", (W, H), theme["bg"])
     d = ImageDraw.Draw(img)
     width = W - 2 * MARGIN
+    if photo is not None and scene.kind not in ("title", "summary"):
+        # Text column on the left, photo on the right
+        width = int(W * 0.50) - MARGIN
+        _paste_photo(img, photo, (int(W * 0.53), 110, W - 90, H - 120), theme["accent"])
 
     if scene.kind in ("title", "summary"):
         d.rectangle([0, H - 24, W * (index + 1) // total, H], fill=theme["accent"])
+        if photo is not None:
+            _paste_photo(img, photo, (W // 2 - 360, H - 470, W // 2 + 360, H - 60), theme["accent"])
+            d = ImageDraw.Draw(img)
         f_big = _font("bold", 96)
         lines = _wrap(d, scene.heading, f_big, width)
         y = H // 2 - len(lines) * 60 - (40 if scene.bullets else 0)
+        if photo is not None:
+            y = 130
         for ln in lines:
             d.text((W // 2, y), ln, font=f_big, fill=theme["fg"], anchor="mt")
             y += 120

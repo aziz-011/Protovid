@@ -27,3 +27,27 @@ for s in [
 out = Path(__file__).with_name("sample_protocol.docx")
 d.save(out)
 print(out)
+
+# Stand-in "photos" so you can try --images without your own pictures.
+# Replace these with real photos of your machines and components.
+from PIL import Image, ImageDraw, ImageFont
+
+img_dir = Path(__file__).with_name("images")
+img_dir.mkdir(exist_ok=True)
+try:
+    font = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
+except OSError:
+    font = ImageFont.load_default(44)
+for name, color in [
+    ("filter_housing.png", (59, 130, 246)),
+    ("sediment_cartridge.png", (234, 179, 8)),
+    ("housing_wrench.png", (100, 116, 139)),
+    ("inlet_valve.png", (220, 38, 38)),
+    ("pressure_release_button.png", (22, 163, 74)),
+]:
+    im = Image.new("RGB", (1200, 900), (236, 240, 244))
+    dr = ImageDraw.Draw(im)
+    dr.rounded_rectangle([350, 150, 850, 650], 60, fill=color)
+    dr.text((600, 760), Path(name).stem.replace("_", " "), font=font, fill=(30, 41, 59), anchor="mm")
+    im.save(img_dir / name)
+print(img_dir)

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field, asdict
 
 from .docx_reader import ProtocolDoc
+from .images import ImageAsset, claude_image_blocks, match_by_name
 
 MODEL = "claude-opus-5-5"
 
@@ -25,16 +26,19 @@ class Scene:
     bullets: list[str] = field(default_factory=list)
     narration: str = ""
     step_number: int | None = None
+    image: str | None = None  # file name inside Storyboard.images_dir
 
 
 @dataclass
 class Storyboard:
     title: str
     scenes: list[Scene]
+    images_dir: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(
-            {"title": self.title, "scenes": [asdict(s) for s in self.scenes]},
+            {"title": self.title, "images_dir": self.images_dir,
+             "scenes": [asdict(s) for s in self.scenes]},
             indent=2,
             ensure_ascii=False,
         )
@@ -49,10 +53,11 @@ class Storyboard:
                 bullets=[b.strip() for b in s.get("bullets", []) if b.strip()],
                 narration=s.get("narration", "").strip(),
                 step_number=s.get("step_number"),
+                image=s.get("image") or None,
             )
             for s in data["scenes"]
         ]
-        return cls(title=data["title"], scenes=scenes)
+        return cls(title=data["title"], scenes=scenes, images_dir=data.get("images_dir"))
 
 
 # --------------------------------------------------------------------------- #
@@ -88,29 +93,39 @@ the source wording.
 - Write in the same language as the protocol unless told otherwise.
 """
 
-STORYBOARD_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "scenes": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "kind": {"type": "string", "enum": SCENE_KINDS},
-                    "heading": {"type": "string"},
-                    "bullets": {"type": "array", "items": {"type": "string"}},
-                    "narration": {"type": "string"},
-                    "step_number": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+IMAGES_PROMPT = """
+Photos of the equipment are attached, each preceded by its file name. For every scene, set "image" to the file name of the photo that best shows the machine, component, tool or material the scene talks about, so the viewer can recognise it. Look at what each photo actually shows; use the file name as a hint. Reuse a photo across scenes when it fits. Use null when no photo clearly matches - a wrong picture is worse than none. When a photo shows a part the protocol names, you may use the name visible in the photo in the bullets, but do not describe details you cannot see.
+"""
+
+def storyboard_schema(image_names: list[str]) -> dict:
+    image_field = (
+        {"anyOf": [{"type": "string", "enum": image_names}, {"type": "null"}]}
+        if image_names else {"type": "null"}
+    )
+    return {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "scenes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string", "enum": SCENE_KINDS},
+                        "heading": {"type": "string"},
+                        "bullets": {"type": "array", "items": {"type": "string"}},
+                        "narration": {"type": "string"},
+                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                        "image": image_field,
+                    },
+                    "required": ["kind", "heading", "bullets", "narration", "step_number", "image"],
+                    "additionalProperties": False,
                 },
-                "required": ["kind", "heading", "bullets", "narration", "step_number"],
-                "additionalProperties": False,
             },
         },
-    },
-    "required": ["title", "scenes"],
-    "additionalProperties": False,
-}
+        "required": ["title", "scenes"],
+        "additionalProperties": False,
+    }
 
 
 class StoryboardError(RuntimeError):
@@ -123,6 +138,7 @@ def claude_storyboard(
     language: str | None = None,
     audience: str | None = None,
     model: str = MODEL,
+    images: list[ImageAsset] | None = None,
 ) -> Storyboard:
     import anthropic
 
@@ -139,18 +155,22 @@ def claude_storyboard(
         "Write the video storyboard for this protocol."
         + ("\n" + "\n".join(extra) if extra else "")
     )
+    images = images or []
+    image_blocks = claude_image_blocks(images)
+    usable = [b["text"].removeprefix("Image file: ") for b in image_blocks if b["type"] == "text"]
+    content = image_blocks + [{"type": "text", "text": user_content}]
 
     with client.beta.messages.stream(
         model=model,
         max_tokens=64000,
-        system=SYSTEM_PROMPT,
+        system=SYSTEM_PROMPT + (IMAGES_PROMPT if usable else ""),
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
         output_config={
             "effort": "medium",
-            "format": {"type": "json_schema", "schema": STORYBOARD_SCHEMA},
+            "format": {"type": "json_schema", "schema": storyboard_schema(usable)},
         },
-        messages=[{"role": "user", "content": user_content}],
+        messages=[{"role": "user", "content": content}],
     ) as stream:
         message = stream.get_final_message()
 
@@ -166,6 +186,11 @@ def claude_storyboard(
         raise StoryboardError(f"Could not parse storyboard JSON: {exc}") from exc
     if not board.scenes:
         raise StoryboardError("Claude returned an empty storyboard.")
+    for scene in board.scenes:
+        if scene.image not in usable:
+            scene.image = None
+    if images:
+        board.images_dir = str(images[0].path.parent)
     return board
 
 
@@ -182,7 +207,7 @@ def _sentence(text: str) -> str:
     return text if text.endswith((".", "!", "?")) else text + "."
 
 
-def heuristic_storyboard(protocol: ProtocolDoc) -> Storyboard:
+def heuristic_storyboard(protocol: ProtocolDoc, images: list[ImageAsset] | None = None) -> Storyboard:
     scenes: list[Scene] = [
         Scene(kind="title", heading=protocol.title, narration=f"{_sentence(protocol.title)} A step by step guide.")
     ]
@@ -232,4 +257,10 @@ def heuristic_storyboard(protocol: ProtocolDoc) -> Storyboard:
         Scene("summary", "Summary", [f"{step_no} steps completed"] if step_no else [],
               f"That completes the {protocol.title} protocol.")
     )
-    return Storyboard(title=protocol.title, scenes=scenes)
+    board = Storyboard(title=protocol.title, scenes=scenes)
+    if images:
+        board.images_dir = str(images[0].path.parent)
+        for scene in scenes:
+            if scene.kind != "title":
+                scene.image = match_by_name(" ".join([scene.heading, *scene.bullets]), images)
+    return board
