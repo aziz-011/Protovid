@@ -63,7 +63,8 @@ def concat(clips: list[Path], out: Path) -> Path:
     listing = out.with_suffix(".txt")
     listing.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
-          "-c", "copy", "-movflags", "+faststart", str(out)])
+          "-c:v", "copy", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",  # standard loudness for the voice
+          "-c:a", "aac", "-ar", "44100", "-b:a", "160k", "-movflags", "+faststart", str(out)])
     listing.unlink(missing_ok=True)
     return out
 
