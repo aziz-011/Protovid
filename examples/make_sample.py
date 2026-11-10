@@ -1,0 +1,29 @@
+"""Create examples/sample_protocol.docx - a small demo protocol to try Protovid on."""
+
+from pathlib import Path
+
+import docx
+
+d = docx.Document()
+d.core_properties.title = "Water Filter Cartridge Replacement"
+d.add_heading("Water Filter Cartridge Replacement", level=0)
+d.add_heading("Purpose", level=1)
+d.add_paragraph("This protocol describes how to safely replace the sediment filter cartridge "
+                "on the unit every 6 months or when output flow drops below 2 litres per minute.")
+d.add_heading("Materials", level=1)
+for m in ["New sediment cartridge (5 micron)", "Filter housing wrench", "Nitrile gloves", "Bucket and towel"]:
+    d.add_paragraph(m, style="List Bullet")
+d.add_heading("Procedure", level=1)
+for s in [
+    "Switch off the unit and close the inlet valve.",
+    "Warning: Do not open the housing while the system is pressurised.",
+    "Press the pressure-release button until water stops flowing.",
+    "Place the bucket under the housing and unscrew it with the wrench.",
+    "Remove the old cartridge and rinse the housing with clean water.",
+    "Insert the new cartridge and hand-tighten the housing.",
+    "Open the inlet valve, switch the unit on and check for leaks for 5 minutes.",
+]:
+    d.add_paragraph(s, style="List Number")
+out = Path(__file__).with_name("sample_protocol.docx")
+d.save(out)
+print(out)
