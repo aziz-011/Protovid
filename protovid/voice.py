@@ -62,8 +62,13 @@ def _espeak_voice(exe: str, lang: str) -> str:
     except OSError:
         return lang
     prefix = {"en": "en", "fr": "fr", "es": "es", "de": "de", "it": "it"}.get(lang[:2], lang)
+    found = []
     for line in out.splitlines()[1:]:
         cols = line.split()
         if len(cols) >= 5 and cols[1].startswith(prefix) and cols[4].startswith("mb/"):
-            return cols[4].split("/", 1)[1]
-    return lang
+            found.append(cols[4].split("/", 1)[1])
+    native = {"en": ("mb-us", "mb-en"), "fr": ("mb-fr",), "es": ("mb-es",), "de": ("mb-de",), "it": ("mb-it",)}
+    for name in found:  # a native voice (e.g. mb-us2) before a foreign one reading the language
+        if name.startswith(native.get(prefix, (f"mb-{prefix}",))):
+            return name
+    return found[0] if found else lang
